@@ -35,13 +35,16 @@ class Variables:
         return len(dc.fields(cls)) - 1
 
     def numerics(self):
-        return tuple(x for x in dc.astuple(self) if x != self.application_number)
+        return tuple(
+            (k, v) for k, v in dc.asdict(self).items() if v != self.application_number
+        )
 
 
 @dc.dataclass(frozen=True)
 class Case:
     application_number: int
     variable: str
+    label: str
 
     scale_factor: float
     reference: float
@@ -85,14 +88,15 @@ class Design:
         for idx in indices:
             row = self.models.row(by_predicate=app_number == idx, named=True)
 
-            for var, factor in itertools.product(
+            for (var, label), factor in itertools.product(
                 self.var.numerics(), self.scale_factors
             ):
-                reference = row[var]
+                reference = row[label]
                 adjusted = reference * factor
                 yield Case(
                     application_number=idx,
                     variable=var,
+                    label=label,
                     scale_factor=factor,
                     reference=reference,
                     adjusted=adjusted,
@@ -105,7 +109,7 @@ if __name__ == '__main__':
 
     console = rich.get_console()
     app = cyclopts.App(
-        config=cyclopts.config.Toml('conf.toml', allow_unknown=True),  # ty:ignore[invalid-argument-type]
+        config=cyclopts.config.Toml('conf.toml', allow_unknown=True),
         console=console,
     )
 
