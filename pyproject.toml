@@ -3,13 +3,12 @@ name            = "eco2doe"
 version         = "0.1.0"
 description     = "ECO2DOE"
 readme          = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.14"
 authors         = [{ name = "beskep", email = "beskep@naver.com" }]
 dependencies    = [
   "eco2",
   "fastexcel>=0.19.0",
   "more-itertools>=10.8.0",
-  "msgspec>=0.20.0",
   "polars>=1.38.1",
   "structlog>=25.5.0",
   "xlsxwriter>=3.2.9",
@@ -19,12 +18,7 @@ dependencies    = [
 eco2doe = "eco2doe:main"
 
 [dependency-groups]
-dev = [
-  "pytest>=9.0.2",
-  "ruff>=0.15.5",
-  "ty>=0.0.21",
-  "types-lxml>=2026.2.16",
-]
+dev = ["pytest>=9.0.2", "ruff>=0.15.5", "ty>=0.0.21", "types-lxml>=2026.2.16"]
 
 [build-system]
 requires      = ["uv_build>=0.10.8,<0.11.0"]
