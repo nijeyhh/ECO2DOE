@@ -1,7 +1,5 @@
 """ECO2 일괄 계산 결과(batchreport.tab) 해석."""
 
-from __future__ import annotations
-
 import dataclasses as dc
 import functools
 from typing import TYPE_CHECKING
