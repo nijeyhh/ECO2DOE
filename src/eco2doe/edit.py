@@ -5,10 +5,12 @@ from typing import TYPE_CHECKING, ClassVar, Literal
 
 import cyclopts
 import more_itertools as mi
+import polars as pl
 import structlog
 from eco2 import editor
 from rich.progress import track
 
+from eco2doe import batch_report
 from eco2doe.design import Design
 
 if TYPE_CHECKING:
@@ -17,7 +19,11 @@ if TYPE_CHECKING:
 BoilerUsage = Literal['space', 'water']
 
 app = cyclopts.App(
-    config=cyclopts.config.Toml('conf.toml'),
+    config=cyclopts.config.Toml(
+        'conf.toml',
+        allow_unknown=True,
+        use_commands_as_keys=False,
+    ),
     result_action=['call_if_callable', 'print_non_int_sys_exit'],
 )
 logger = structlog.stdlib.get_logger()
@@ -154,9 +160,9 @@ def _find_model(path: Path, app_number: int):
     return mi.one(path.glob(f'{app_number}*.tpl*'))
 
 
-@app.default
+@app.command
 @dc.dataclass(frozen=True)
-class BatchEditor:
+class Edit:
     src: Path
     dst: Path
     cases: Path
@@ -207,6 +213,88 @@ class BatchEditor:
                 cop_reduction=self.design.cop_reduction,
             )
             editor(self._dst(case, idx, width))
+
+
+@app.command
+@dc.dataclass(frozen=True)
+class Report:
+    dst: Path
+
+    @functools.cached_property
+    def _cases(self):
+        return (
+            pl
+            .scan_parquet(self.dst / 'cases.parquet')
+            .rename({
+                'application_number': 'app_number',
+                'variable': 'design_variable',
+                'label': 'design_label',
+            })
+            .with_columns(pl.col('app_number').cast(pl.UInt32))
+            .collect()
+        )
+
+    @functools.cached_property
+    def _meta(self):
+        return batch_report.read_metadata()
+
+    def read_reports(self):
+        reports = [
+            batch_report.BatchReport(x, _metadata=self._meta)
+            for x in self.dst.glob('**/batchreport.tab')
+        ]
+        long = pl.concat([x.long_data for x in reports])
+        wide = pl.concat([x.wide_data for x in reports], how='vertical_relaxed')
+
+        return long, wide
+
+    @staticmethod
+    def _prep_report_columns(data: pl.DataFrame):
+        data = data.rename({'index': 'report_index'}, strict=False)
+        columns = data.columns
+        return (
+            data
+            .with_columns(
+                m=pl.col('case_name').str.extract_groups(
+                    r'^(?<index>\d+)\.(?<app_number>\d+)'
+                    r'_(?<design_variable>[\w_]+)=(?<scale_factor>[\d\.]+)\.tplx$'
+                )
+            )
+            .unnest('m')
+            .select(
+                pl.col('index').cast(pl.UInt32),
+                pl.col('app_number').cast(pl.UInt32),
+                'design_variable',
+                pl.col('scale_factor').cast(pl.Float64),
+                *columns,
+            )
+            .drop('case')
+        )
+
+    def _join(self, data: pl.DataFrame):
+        cols = self._cases.columns
+        return (
+            self
+            ._prep_report_columns(data)
+            .join(
+                self._cases,
+                on=['index', 'app_number', 'design_variable', 'scale_factor'],
+                how='left',
+                validate='m:1',
+            )
+            .select(*cols, pl.all().exclude(cols))
+        )
+
+    def __call__(self):
+        long, wide = self.read_reports()
+
+        wide = self._join(wide)
+        wide.write_parquet(self.dst / 'report-wide.parquet')
+        wide.write_excel(self.dst / 'report-wide.xlsx', column_widths=100)
+
+        long = self._join(long)
+        long.write_parquet(self.dst / 'report-long.parquet')
+        long.write_excel(self.dst / 'report-long.xlsx', column_widths=100)
 
 
 if __name__ == '__main__':

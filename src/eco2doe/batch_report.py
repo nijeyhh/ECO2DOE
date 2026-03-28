@@ -57,7 +57,7 @@ class BatchReport:
             cols = [*cols, *(f'unknown{x + 1}' for x in range(data.width - len(cols)))]
 
         data.columns = cols
-        return (
+        data = (
             (data)
             .with_row_index('case')
             .with_columns(
@@ -66,6 +66,18 @@ class BatchReport:
                 .cast(pl.Float64)
             )
         )
+        nulls = (
+            data
+            .count()
+            .unpivot()
+            .filter(pl.col('value') == 0)
+            .select('variable')
+            .to_series()
+            .to_list()
+        )
+        if nulls:
+            data = data.with_columns(pl.col(nulls).cast(pl.Float64))
+        return data
 
     @functools.cached_property
     def long_data(self):
