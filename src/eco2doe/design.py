@@ -19,16 +19,16 @@ class Variables:
     u_window: str = '창호 평균 열관류율'
     shgc: str = 'SHGC 평균'
 
-    boiler_efficiency: str = '온열설비 효율_보일러'
-    ehp_cop_heating: str = '온열설비 효율_히트펌프 전기'
-    ghp_cop_heating: str = '온열설비 효율_히트펌프 가스'
-    ehp_cop_cooling: str = '냉열설비 효율_압축식'
-    ghp_cop_cooling: str = '냉열설비 효율_압축식(LNG)'
-    absorption_efficiency: str = '냉열설비 효율_흡수식(없음)'
-    boiler_water_efficiency: str = '급탕설비 효율_보일러'
+    boiler_space: str = '온열설비 효율_보일러'
+    ehp_heating: str = '온열설비 효율_히트펌프 전기'
+    ghp_heating: str = '온열설비 효율_히트펌프 가스'
+    ehp_cooling: str = '냉열설비 효율_압축식'
+    ghp_cooling: str = '냉열설비 효율_압축식(LNG)'
+    absorption: str = '냉열설비 효율_흡수식(없음)'
+    boiler_water: str = '급탕설비 효율_보일러'
     light_density: str = '평균 조명밀도'
-    heat_recovery_heating: str = '평균열회수율_전열교환기'
-    heat_recovery_colling: str = '평균열회수율냉_전열교환기'
+    recovery_heating: str = '평균열회수율_전열교환기'
+    recovery_colling: str = '평균열회수율냉_전열교환기'
 
     @classmethod
     def count(cls):
@@ -50,6 +50,9 @@ class Case:
     reference: float
     adjusted: float  # scale_factor * reference
 
+    def name(self):
+        return f'{self.application_number}_{self.variable}={self.scale_factor}'
+
 
 @dc.dataclass(frozen=True)
 class Design:
@@ -57,6 +60,7 @@ class Design:
     models: pl.DataFrame
 
     scale_factors: tuple[float, ...] = SCALE_FACTORS
+    cop_reduction: float = 0.45
 
     @classmethod
     def create(cls, cases: str | Path, conf: str | Path = 'design.toml'):
@@ -81,6 +85,10 @@ class Design:
     def count(self):
         return self.var.count() * self.models.height * len(self.scale_factors)
 
+    @functools.cached_property
+    def app_numbers(self):
+        return self.models[self.var.application_number].to_list()
+
     def iter(self):
         indices = self.models[self.var.application_number].to_list()
         app_number = pl.col(self.var.application_number)
@@ -98,9 +106,29 @@ class Design:
                     variable=var,
                     label=label,
                     scale_factor=factor,
-                    reference=reference,
-                    adjusted=adjusted,
+                    reference=round(reference, 6),
+                    adjusted=round(adjusted, 6),
                 )
+
+    def dataframe(self):
+        return (
+            pl
+            .from_dicts([dc.asdict(x) for x in self.iter()])
+            .with_row_index()
+            .with_columns(
+                limit=pl.col('variable').replace_strict(
+                    {
+                        'boiler_space': 100,
+                        'boiler_water': 100,
+                        'recovery_heating': 1,
+                        'recovery_cooling': 1,
+                    },
+                    default=None,
+                    return_dtype=pl.Float64,
+                )
+            )
+            .with_columns(exceed=pl.col('adjusted') > pl.col('limit'))
+        )
 
 
 if __name__ == '__main__':
