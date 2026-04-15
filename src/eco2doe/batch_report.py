@@ -60,6 +60,7 @@ class BatchReport:
             separator='\t',
             has_header=False,
             infer_schema_length=self.infer_schema_length,
+            encoding='korean',
             **self.kwargs,
         )
         cols = ['case_name', *self.metadata['variable'].to_list()]
