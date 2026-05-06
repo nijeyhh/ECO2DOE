@@ -11,5 +11,6 @@ wheels/
 
 # Project
 bin/
+.vscode/launch.json
 conf.toml
 *.log
