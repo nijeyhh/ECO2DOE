@@ -28,7 +28,7 @@ class Variables:
     boiler_water: str = '급탕설비 효율_보일러'
     light_density: str = '평균 조명밀도'
     recovery_heating: str = '평균열회수율_전열교환기'
-    recovery_colling: str = '평균열회수율냉_전열교환기'
+    recovery_cooling: str = '평균열회수율냉_전열교환기'
 
     @classmethod
     def count(cls):

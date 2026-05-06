@@ -111,7 +111,7 @@ class Editor(editor.Eco2Editor):
     def _set_heat_exchanger_efficiency(self):
         tag = {
             'recovery_heating': '열회수율',
-            'recovery_colling': '열회수율냉',
+            'recovery_cooling': '열회수율냉',
         }[self.case.variable]
 
         value = f'{self.case.adjusted:.2f}'
