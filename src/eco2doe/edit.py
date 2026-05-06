@@ -19,6 +19,18 @@ if TYPE_CHECKING:
 
 BoilerUsage = Literal['space', 'water']
 
+BOILER_USAGE: dict[str, BoilerUsage] = {
+    'boiler_space': 'space',
+    'boiler_water': 'water',
+}
+COOLING_TYPE = {
+    'ehp_cooling': '압축식',
+    'ghp_cooling': '압축식(LNG)',
+}
+HEAT_EXCHANGER_TAG = {
+    'recovery_heating': '열회수율',
+    'recovery_cooling': '열회수율냉',
+}
 AHU_TAG = {
     'ahu_recovery_heating': '열회수율',
     'ahu_recovery_cooling': '열회수율냉',
@@ -77,15 +89,7 @@ class Editor(editor.Eco2Editor):
         return sum(1 for x in self._iter('tbl_zone') if x.findtext(tag) == code)
 
     def _set_boiler_efficiency(self):
-        usage: BoilerUsage
-        match self.case.variable:
-            case 'boiler_space':
-                usage = 'space'
-            case 'boiler_water':
-                usage = 'water'
-            case _:
-                raise ValueError(self.case)
-
+        usage = BOILER_USAGE[self.case.variable]
         value = f'{self.case.adjusted:.3f}'
 
         for e in self._iter('tbl_nanbangkiki'):
@@ -95,10 +99,7 @@ class Editor(editor.Eco2Editor):
             editor.set_child_text(e, '정격보일러효율', value)
 
     def _set_heating_hp_cop(self):
-        elec = {
-            'ehp_heating': True,
-            'ghp_heating': False,
-        }[self.case.variable]
+        is_elec = {'ehp_heating': True, 'ghp_heating': False}[self.case.variable]
 
         v7 = f'{self.case.adjusted:.3f}'
         v10 = f'{self.case.adjusted * self.cop_reduction:.3f}'
@@ -106,18 +107,14 @@ class Editor(editor.Eco2Editor):
         for e in self._iter('tbl_nanbangkiki'):
             if e.findtext('열생산기기방식') != '히트펌프':
                 continue
-            if elec is not (e.findtext('히트연료') == '전기'):
+            if is_elec is not (e.findtext('히트연료') == '전기'):
                 continue
 
             editor.set_child_text(e, '히트난방정격7', v7)
             editor.set_child_text(e, '히트난방정격10', v10)
 
     def _set_cooling_hp_cop(self):
-        type_ = {
-            'ehp_cooling': '압축식',
-            'ghp_cooling': '압축식(LNG)',
-        }[self.case.variable]
-
+        type_ = COOLING_TYPE[self.case.variable]
         value = f'{self.case.adjusted:.3f}'
 
         for e in self._iter('tbl_nangbangkiki'):
@@ -139,11 +136,7 @@ class Editor(editor.Eco2Editor):
             editor.set_child_text(e, '열성능비', value)
 
     def _set_heat_exchanger_efficiency(self):
-        tag = {
-            'recovery_heating': '열회수율',
-            'recovery_cooling': '열회수율냉',
-        }[self.case.variable]
-
+        tag = HEAT_EXCHANGER_TAG[self.case.variable]
         value = f'{self.case.adjusted:.2f}'
 
         for e in self._iter('tbl_kongjo'):
