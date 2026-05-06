@@ -13,9 +13,23 @@ from eco2doe import batch_report
 from eco2doe.design import Design
 
 if TYPE_CHECKING:
+    from lxml.etree import _Element
+
     from eco2doe.design import Case
 
 BoilerUsage = Literal['space', 'water']
+
+AHU_TAG = {
+    'ahu_recovery_heating': '열회수율',
+    'ahu_recovery_cooling': '열회수율냉',
+    'ahu_supply_fan': '총효율급기팬',
+    'ahu_exhaust_fan': '총효율배기팬',
+}
+AHU_POWER = {
+    'ahu_supply_fan': '급기팬동력',
+    'ahu_exhaust_fan': '배기팬동력',
+}
+
 
 app = cyclopts.App(
     config=cyclopts.config.Toml(
@@ -28,11 +42,27 @@ app = cyclopts.App(
 logger = structlog.stdlib.get_logger()
 
 
+def _is_ahu_target(zone: _Element):
+    hvac = zone.findtext('냉난방공조')
+    return (
+        hvac in {'냉방', '난방', '냉난방'}  # fmt
+        or (hvac == '환기' and zone.findtext('외기부하처리여부') == '예')
+    )
+
+
 @dc.dataclass(frozen=True)
 class Editor(editor.Eco2Editor):
     case: Case
 
     cop_reduction: float = 0.45
+
+    PASSIVE: ClassVar[tuple[str, ...]] = (
+        'u_wall',
+        'u_roof',
+        'u_floor',
+        'u_window',
+        'shgc',
+    )
     SURFACE: ClassVar[dict[str, editor.SurfaceType]] = {
         'u_wall': '외벽(벽체)',
         'u_roof': '외벽(지붕)',
@@ -122,7 +152,37 @@ class Editor(editor.Eco2Editor):
 
             editor.set_child_text(e, tag, value)
 
-    def _edit(self):
+    def _set_ahu(self):
+        tag = AHU_TAG[self.case.variable]
+        power = AHU_POWER.get(self.case.variable, 'NOT_FAN')
+
+        indices = {
+            zone.findtext('공조난방생산기기', 'NOT_FOUND')
+            for zone in self._iter('tbl_zone')
+            if _is_ahu_target(zone)
+        }
+        indices.discard('0')
+
+        if not indices:
+            logger.warning('변경 대상이 없습니다().', variable=self.case.variable)
+            return
+
+        for e in self._iter('tbl_kongjo'):
+            if e.findtext('code') not in indices:
+                continue
+
+            match self.case.variable:
+                case 'ahu_recovery_heating' | 'ahu_recovery_cooling':
+                    editor.set_child_text(e, tag, f'{self.case.adjusted:.3f}')
+                case 'ahu_supply_fan' | 'ahu_exhaust_fan':
+                    eff = float(e.findtext(tag)) * self.case.scale_factor
+                    editor.set_child_text(e, tag, f'{eff:.3f}')
+                    pwr = float(e.findtext(power)) / self.case.scale_factor
+                    editor.set_child_text(e, power, f'{pwr:.3f}')
+                case _:
+                    raise ValueError(self.case)
+
+    def _edit_passive(self):
         if t := self.SURFACE.get(self.case.variable):
             self.xml.set_walls(uvalue=self.case.adjusted, surface_type=t)
             return
@@ -132,6 +192,11 @@ class Editor(editor.Eco2Editor):
                 self.xml.set_windows(uvalue=self.case.adjusted)
             case 'shgc':
                 self.xml.set_windows(shgc=self.case.adjusted)
+            case _:
+                raise ValueError(self.case)
+
+    def _edit_active(self):
+        match self.case.variable:
             case 'boiler_space' | 'boiler_water':
                 self._set_boiler_efficiency()
             case 'ehp_heating' | 'ghp_heating':
@@ -144,10 +209,23 @@ class Editor(editor.Eco2Editor):
                 self.xml.set_elements(
                     'tbl_zone/조명에너지부하율입력치', f'{self.case.adjusted:.3f}'
                 )
-            case 'recovery_heating' | 'recovery_colling':
+            case 'recovery_heating' | 'recovery_cooling':
                 self._set_heat_exchanger_efficiency()
+            case (
+                'ahu_recovery_heating'
+                | 'ahu_recovery_cooling'
+                | 'ahu_supply_fan'
+                | 'ahu_exhaust_fan'
+            ):
+                self._set_ahu()
             case _:
                 raise ValueError(self.case)
+
+    def _edit(self):
+        if self.case.variable in self.PASSIVE:
+            self._edit_passive()
+        else:
+            self._edit_active()
 
     def __call__(self, dst: str | Path):
         self._edit()
