@@ -75,7 +75,6 @@ class BatchReport:
             .with_columns(
                 (cs.contains('면적') & cs.string())
                 .str.replace_all(',', '')
-                .cast(pl.Float64)
             )
         )
         nulls = (
@@ -88,7 +87,7 @@ class BatchReport:
             .to_list()
         )
         if nulls:
-            data = data.with_columns(pl.col(nulls).cast(pl.Float64))
+            data = data.with_columns(pl.col(nulls))
         return data
 
     @functools.cached_property

@@ -150,7 +150,7 @@ class Editor(editor.Eco2Editor):
         power = AHU_POWER.get(self.case.variable, 'NOT_FAN')
 
         indices = {
-            zone.findtext('공조난방생산기기', 'NOT_FOUND')
+            zone.findtext('냉난방공조처리시스템', 'NOT_FOUND')
             for zone in self._iter('tbl_zone')
             if _is_ahu_target(zone)
         }
@@ -168,9 +168,24 @@ class Editor(editor.Eco2Editor):
                 case 'ahu_recovery_heating' | 'ahu_recovery_cooling':
                     editor.set_child_text(e, tag, f'{self.case.adjusted:.3f}')
                 case 'ahu_supply_fan' | 'ahu_exhaust_fan':
-                    eff = float(e.findtext(tag)) * self.case.scale_factor
+                    eff_text = (e.findtext(tag) or '').strip()
+                    power_text = (e.findtext(power) or '').strip()
+
+                    if not eff_text or not power_text:
+                        logger.warning(
+                            'AHU 팬 성능 조정을 건너뜁니다.',
+                            code=e.findtext('code'),
+                            efficiency_tag=tag,
+                            efficiency_value=eff_text,
+                            power_tag=power,
+                            power_value=power_text,
+                        )
+                        continue
+
+                    eff = float(eff_text) * self.case.scale_factor
+                    pwr = float(power_text) / self.case.scale_factor
+
                     editor.set_child_text(e, tag, f'{eff:.3f}')
-                    pwr = float(e.findtext(power)) / self.case.scale_factor
                     editor.set_child_text(e, power, f'{pwr:.3f}')
                 case _:
                     raise ValueError(self.case)
