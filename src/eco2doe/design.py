@@ -22,13 +22,21 @@ class Variables:
     boiler_space: str = '온열설비 효율_보일러'
     ehp_heating: str = '온열설비 효율_히트펌프 전기'
     ghp_heating: str = '온열설비 효율_히트펌프 가스'
+
     ehp_cooling: str = '냉열설비 효율_압축식'
     ghp_cooling: str = '냉열설비 효율_압축식(LNG)'
     absorption: str = '냉열설비 효율_흡수식(없음)'
+
     boiler_water: str = '급탕설비 효율_보일러'
     light_density: str = '평균 조명밀도'
+
     recovery_heating: str = '평균열회수율_전열교환기'
-    recovery_colling: str = '평균열회수율냉_전열교환기'
+    recovery_cooling: str = '평균열회수율냉_전열교환기'
+
+    ahu_recovery_heating: str = '평균열회수율_AHU'
+    ahu_recovery_cooling: str = '평균열회수율냉_AHU'
+    ahu_supply_fan: str = '총효율급기팬_AHU'
+    ahu_exhaust_fan: str = '총효율배기팬_AHU'
 
     @classmethod
     def count(cls):
@@ -66,10 +74,15 @@ class Design:
     def create(cls, cases: str | Path, conf: str | Path = 'design.toml'):
         c = tomllib.loads(Path(conf).read_text('UTF-8'))
         var = Variables(**c['variable'])
-        models = pl.read_excel(
-            cases,
-            read_options={'header_row': 1},
-            columns=dc.astuple(var),
+        numerics = [x[1] for x in var.numerics()]
+        models = (
+            (pl)
+            .read_excel(
+                cases,
+                read_options={'header_row': 1},
+                columns=dc.astuple(var),
+            )
+            .with_columns(pl.col(numerics).cast(pl.Float64, strict=False).fill_null(0))
         )
         if not models[var.application_number].is_unique().all():
             msg = '신청번호 중복'
